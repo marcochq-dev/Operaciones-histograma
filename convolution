@@ -1,0 +1,73 @@
+%%cuda
+#include <stdio.h>
+#include <cuda_runtime.h>
+#include <sys/time.h>
+#include <iostream>
+using namespace std;
+
+
+#define SIZE 1000000
+#define KERNEL_SIZE 3
+
+__global__ void convolution(int *d_output, int *d_input)
+{
+    int tid = threadIdx.x + blockDim.x * blockIdx.x;
+    if (tid < SIZE)
+    {
+        int sum = 0;
+        for (int i = -KERNEL_SIZE / 2; i <= KERNEL_SIZE / 2; ++i)
+        {
+            int index = tid + i;
+            if (index >= 0 && index < SIZE)
+            {
+                sum += d_input[index];
+            }
+        }
+        d_output[tid] = sum;
+    }
+}
+
+int main()
+{
+    int h_input[SIZE];
+    for (int i = 0; i < SIZE; ++i)
+    {
+        h_input[i] = i % 255; 
+    }
+
+    int h_output[SIZE];
+
+    // Declare GPU memory pointers
+    int *d_input;
+    int *d_output;
+
+    // Allocate GPU memory
+    cudaMalloc((void **)&d_input, SIZE * sizeof(int));
+    cudaMalloc((void **)&d_output, SIZE * sizeof(int));
+
+    // Transfer the input array to the GPU
+    cudaMemcpy(d_input, h_input, SIZE * sizeof(int), cudaMemcpyHostToDevice);
+
+    // Launch the kernel
+    convolution<<<(SIZE + 255) / 256, 256>>>(d_output, d_input);
+
+    // Copy back the result from GPU
+    cudaMemcpy(h_output, d_output, SIZE * sizeof(int), cudaMemcpyDeviceToHost);
+
+    // Print a sample of the results
+    int sample_size = 10;
+    printf("Sample of convolution results:\n");
+    for (int i = 0; i < sample_size; ++i)
+    {
+        printf("Output[%d]: %d\n", i, h_output[i]);
+    }
+
+    // Print total number of processed pixels
+    printf("Total pixels processed: %d\n", SIZE);
+
+    // Free GPU memory allocation
+    cudaFree(d_input);
+    cudaFree(d_output);
+
+    return 0;
+}
