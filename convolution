@@ -1,4 +1,12 @@
+#INSTALAR
+!pip install nvcc4jupyter
 
+%load_ext nvcc4jupyter
+
+!pip install opencv-python-headless
+
+!pip install pycuda
+#CODIGO CONVOLUTION
 import cv2
 import numpy as np
 import pycuda.driver as cuda
