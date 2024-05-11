@@ -1,3 +1,6 @@
+
+#NOTA: los archivos (suma y resta, convolución, equalizar histograma, template matching) SE EJECUTAN CON ARCHIVOS CARGADOS DEL DRIVE LOCAL
+
 #Estas operaciones se ejecutan en colab de google
 #Para ejecutar los codigos de operaciones de procesamiento de imagenes, instalar las siguientes librerias
  
@@ -9,5 +12,3 @@
 
 !pip install pycuda
 
-
-NOTA: los archivos (suma y resta, convolución, equalizar histograma) fueron probados con imagenes que se cargan del DRIVE
