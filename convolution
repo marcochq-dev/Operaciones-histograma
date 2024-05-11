@@ -1,73 +1,129 @@
-%%cuda
-#include <stdio.h>
-#include <cuda_runtime.h>
-#include <sys/time.h>
-#include <iostream>
-using namespace std;
+
+import cv2
+import numpy as np
+import pycuda.driver as cuda
+import pycuda.autoinit
+from pycuda.compiler import SourceModule
+from google.colab.patches import cv2_imshow
 
 
-#define SIZE 1000000
-#define KERNEL_SIZE 3
+from google.colab import drive
+drive.mount('/content/drive')
 
-__global__ void convolution(int *d_output, int *d_input)
+
+image_path = "/content/drive/MyDrive/Proceso de Imagenes/imagen-grises.png"
+
+
+image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+
+
+if image is None:
+    print("Error: Unable to load image")
+else:
+    print("Image loaded successfully")
+
+
+h_img = image.flatten().astype(np.uint8)
+
+
+cuda_code = """
+__global__ void histogram_atomic(int *d_b, unsigned char *d_a, int size)
 {
     int tid = threadIdx.x + blockDim.x * blockIdx.x;
-    if (tid < SIZE)
+    if (tid < size)
     {
-        int sum = 0;
-        for (int i = -KERNEL_SIZE / 2; i <= KERNEL_SIZE / 2; ++i)
+        atomicAdd(&(d_b[d_a[tid]]), 1);
+    }
+}
+"""
+
+
+mod = SourceModule(cuda_code)
+
+
+histogram_atomic = mod.get_function("histogram_atomic")
+
+
+size = len(h_img)
+h_b = np.zeros(256, dtype=np.int32)
+
+
+d_img = cuda.mem_alloc(h_img.nbytes)
+d_b = cuda.mem_alloc(h_b.nbytes)
+
+
+cuda.memcpy_htod(d_img, h_img)
+cuda.memset_d32(d_b, 0, 256)
+
+
+block_size = 256
+grid_size = (size + block_size - 1) // block_size
+histogram_atomic(d_b, d_img, np.int32(size), block=(block_size, 1, 1), grid=(grid_size, 1))
+
+
+cuda.memcpy_dtoh(h_b, d_b)
+
+
+for i in range(len(h_b)):
+    print(f"bin {i} : count {h_b[i]}")
+
+
+cuda_code_convolution = """
+__global__ void convolution(unsigned char *input, unsigned char *output, int width, int height, float *mask, int mask_width, int mask_height)
+{
+    int x = threadIdx.x + blockIdx.x * blockDim.x;
+    int y = threadIdx.y + blockIdx.y * blockDim.y;
+
+    if (x < width && y < height)
+    {
+        float sum = 0.0;
+        for (int i = 0; i < mask_height; i++)
         {
-            int index = tid + i;
-            if (index >= 0 && index < SIZE)
+            for (int j = 0; j < mask_width; j++)
             {
-                sum += d_input[index];
+                int idx = (y + i - mask_height / 2) * width + (x + j - mask_width / 2);
+                if (idx >= 0 && idx < width * height)
+                {
+                    sum += mask[i * mask_width + j] * input[idx];
+                }
             }
         }
-        d_output[tid] = sum;
+        output[y * width + x] = sum;
     }
 }
+"""
 
-int main()
-{
-    int h_input[SIZE];
-    for (int i = 0; i < SIZE; ++i)
-    {
-        h_input[i] = i % 255; 
-    }
 
-    int h_output[SIZE];
+mod_convolution = SourceModule(cuda_code_convolution)
 
-    // Declare GPU memory pointers
-    int *d_input;
-    int *d_output;
 
-    // Allocate GPU memory
-    cudaMalloc((void **)&d_input, SIZE * sizeof(int));
-    cudaMalloc((void **)&d_output, SIZE * sizeof(int));
+convolution = mod_convolution.get_function("convolution")
 
-    // Transfer the input array to the GPU
-    cudaMemcpy(d_input, h_input, SIZE * sizeof(int), cudaMemcpyHostToDevice);
 
-    // Launch the kernel
-    convolution<<<(SIZE + 255) / 256, 256>>>(d_output, d_input);
+width = image.shape[1]
+height = image.shape[0]
+mask_width = 3  # Ancho de la máscara
+mask_height = 3  # Alto de la máscara
+mask = np.ones((mask_height, mask_width), dtype=np.float32) / (mask_width * mask_height)  # Máscara de convolución (filtro de promedio)
 
-    // Copy back the result from GPU
-    cudaMemcpy(h_output, d_output, SIZE * sizeof(int), cudaMemcpyDeviceToHost);
 
-    // Print a sample of the results
-    int sample_size = 10;
-    printf("Sample of convolution results:\n");
-    for (int i = 0; i < sample_size; ++i)
-    {
-        printf("Output[%d]: %d\n", i, h_output[i]);
-    }
+d_input = cuda.mem_alloc(image.nbytes)
+d_output = cuda.mem_alloc(image.nbytes)
+d_mask = cuda.mem_alloc(mask.nbytes)
 
-    // Print total number of processed pixels
-    printf("Total pixels processed: %d\n", SIZE);
 
-    // Free GPU memory allocation
-    cudaFree(d_input);
-    cudaFree(d_output);
+cuda.memcpy_htod(d_input, image)
+cuda.memcpy_htod(d_mask, mask)
 
-    return 0;
-}
+
+block_size = (16, 16)
+grid_size = ((width + block_size[0] - 1) // block_size[0], (height + block_size[1] - 1) // block_size[1])
+
+
+convolution(d_input, d_output, np.int32(width), np.int32(height), d_mask, np.int32(mask_width), np.int32(mask_height), block=(block_size[0], block_size[1], 1), grid=grid_size)
+image_convolved = np.empty_like(image)
+
+cuda.memcpy_dtoh(image_convolved, d_output)
+
+
+cv2_imshow(image_convolved)
