@@ -9,7 +9,7 @@ from google.colab.patches import cv2_imshow
 from google.colab import drive
 drive.mount('/content/drive')
 
-
+# Cargar la imagen de tu drive
 image_path = "/content/drive/MyDrive/Proceso de Imagenes/mujerdesombrero.png"
 
 
