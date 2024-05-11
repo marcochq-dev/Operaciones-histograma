@@ -8,3 +8,6 @@
 !pip install opencv-python-headless
 
 !pip install pycuda
+
+
+NOTA: los archivos (suma y resta, convolución, equalizar histograma) fueron probados con imagenes que se cargan del DRIVE
