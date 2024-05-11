@@ -1,3 +1,11 @@
+#INSTALAR
+!pip install nvcc4jupyter
+
+%load_ext nvcc4jupyter
+
+!pip install opencv-python-headless
+
+!pip install pycuda
 # SUMA
 import cv2
 import numpy as np
